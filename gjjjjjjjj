@@ -1,0 +1,69 @@
+import os
+from aiogram import Bot, Dispatcher, types
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.utils import executor
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher.filters.state import State, StatesGroup
+
+API_TOKEN = os.getenv('API_TOKEN', '7793704184:AAEEJEqZBZQaTd559ESOAWpLIYjAT2NWlcM')
+ADMIN_ID = int(os.getenv('ADMIN_ID', '1108742069'))
+DONATIONALERTS_LINK = 'https://www.donationalerts.com/r/palachi'
+
+bot = Bot(token=API_TOKEN)
+storage = MemoryStorage()
+dp = Dispatcher(bot, storage=storage)
+
+class Form(StatesGroup):
+    server = State()
+    nickname = State()
+    amount = State()
+
+@dp.message_handler(commands=['start'])
+async def cmd_start(message: types.Message):
+    kb = ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add(KeyboardButton('🛒 Купить валюту'))
+    await message.answer("Привет! Я бот для покупки валюты на серверах Minecraft. Нажми кнопку ниже, чтобы начать:", reply_markup=kb)
+
+@dp.message_handler(lambda msg: msg.text == '🛒 Купить валюту')
+async def choose_server(message: types.Message):
+    kb = ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add(KeyboardButton('Фантаем'), KeyboardButton('Другой сервер'))
+    await Form.server.set()
+    await message.answer("Выбери сервер:", reply_markup=kb)
+
+@dp.message_handler(state=Form.server)
+async def ask_nickname(message: types.Message, state: FSMContext):
+    await state.update_data(server=message.text)
+    await Form.next()
+    await message.answer("Введи свой ник в Minecraft:")
+
+@dp.message_handler(state=Form.nickname)
+async def ask_amount(message: types.Message, state: FSMContext):
+    await state.update_data(nickname=message.text)
+    await Form.next()
+    await message.answer("Теперь введи сумму в рублях, которую хочешь потратить:")
+
+@dp.message_handler(state=Form.amount)
+async def process_order(message: types.Message, state: FSMContext):
+    await state.update_data(amount=message.text)
+    data = await state.get_data()
+
+    server = data['server']
+    nickname = data['nickname']
+    amount = data['amount']
+
+    await message.answer(
+        f"Отлично! Перейди по ссылке для оплаты: {DONATIONALERTS_LINK}\n"
+        f"После оплаты мы вручную выдадим валюту на сервере '{server}' для игрока '{nickname}'."
+    )
+
+    await bot.send_message(
+        ADMIN_ID,
+        f"💰 Новый заказ!\nСервер: {server}\nНик: {nickname}\nСумма: {amount}₽"
+    )
+
+    await state.finish()
+
+if __name__ == '__main__':
+    executor.start_polling(dp, skip_updates=True)
